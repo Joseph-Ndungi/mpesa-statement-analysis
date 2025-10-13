@@ -161,34 +161,49 @@ class PdfService:
 
     @staticmethod
     def _parse_transaction_block(block: str) -> Optional[Transaction]:
-        receipt_match = re.search(r"([A-Z0-9]{10})", block)
+        # Extract receipt number
+        receipt_match = re.search(r"\b([A-Z0-9]{10})\b", block)
         if not receipt_match:
             return None
-
         receipt_no = receipt_match.group(1)
+
+        # Extract completion time
         date_match = re.search(r"\d{4}-\d{2}-\d{2}", block)
         time_match = re.search(r"\d{2}:\d{2}:\d{2}", block)
         completion_time = f"{date_match.group()} {time_match.group()}" if (date_match and time_match) else ""
+        
+        # Fix: restore line break before "Completed/Failed/Pending" if it was merged with details
+        block = re.sub(r"(?i)(?<=\w)(COMPLETED|FAILED|PENDING)", r"\n\1", block)
 
-        status_match = re.findall(r"\b(COMPLETED|FAILED|PENDING)\b", block, re.I)
-        status = status_match[-1] if status_match else "Unknown"
+        # Detect status
+        status_match = re.search(r"(?i)\b(COMPLETED|FAILED|PENDING)\b", block)
+        status = status_match.group(1).capitalize() if status_match else "Unknown"
+        
+        # Amount extraction
+        # Find all monetary amounts, keeping sign
+        amount_matches = re.findall(r"-?[\d,]+\.\d{2}", block)
+        amounts = [PdfService.parse_amount(a) for a in amount_matches]
 
-        # Amounts
-        amounts = re.findall(r"([\d,]+\.\d{2})", block)
         paid_in, withdrawn, balance = None, None, None
-        if len(amounts) >= 3:
-            paid_in, withdrawn, balance = map(PdfService.parse_amount, amounts[-3:])
-        elif len(amounts) == 2:
-            withdrawn, balance = map(PdfService.parse_amount, amounts[-2:])
-        elif len(amounts) == 1:
-            balance = PdfService.parse_amount(amounts[-1])
 
-        # Clean up details
-        details = re.sub(receipt_no, "", block)
-        details = re.sub(r"\d{4}-\d{2}-\d{2}", "", details)
-        details = re.sub(r"\d{2}:\d{2}:\d{2}", "", details)
-        details = re.sub(r"[-]?[\d,]+\.\d{2}", "", details)
-        details = re.sub(r"\b(COMPLETED|FAILED|PENDING)\b", "", details, flags=re.I)
+        if amounts:
+            balance = amounts[-1]  # Last number is almost always the balance
+            # Look for any negatives before that (withdrawals)
+            negatives = [a for a in amounts[:-1] if a < 0]
+            positives = [a for a in amounts[:-1] if a > 0]
+            withdrawn = negatives[-1] if negatives else None
+            paid_in = positives[-1] if positives else None
+
+        # Clean details
+        details = block
+        for pattern in [
+            re.escape(receipt_no),
+            r"\d{4}-\d{2}-\d{2}",
+            r"\d{2}:\d{2}:\d{2}",
+            r"-?[\d,]+\.\d{2}",
+            r"(?i)\b(COMPLETED|FAILED|PENDING)\b",
+        ]:
+            details = re.sub(pattern, "", details)
         details = re.sub(r"\s+", " ", details).strip()
 
         return Transaction(
@@ -201,6 +216,67 @@ class PdfService:
             balance=balance or 0,
             raw=block.strip(),
         )
+
+    # @staticmethod
+    # def _parse_transaction_block(block: str) -> Optional[Transaction]:
+    #     # Receipt
+    #     receipt_match = re.search(r"\b([A-Z0-9]{10})\b", block)
+    #     if not receipt_match:
+    #         return None
+    #     receipt_no = receipt_match.group(1)
+
+    #     # Completion time
+    #     date_match = re.search(r"\d{4}-\d{2}-\d{2}", block)
+    #     time_match = re.search(r"\d{2}:\d{2}:\d{2}", block)
+    #     completion_time = f"{date_match.group()} {time_match.group()}" if (date_match and time_match) else ""
+
+    #     # Status (avoid picking from details)
+    #     status_match = re.search(r"(?:\n|\s{2,})(COMPLETED|FAILED|PENDING)\b", block, re.I)
+    #     status = status_match.group(1).capitalize() if status_match else "Unknown"
+
+    #     # Extract all numeric amounts in order (with sign)
+    #     amount_matches = re.findall(r"-?[\d,]+\.\d{2}", block)
+    #     amounts = [PdfService.parse_amount(a) for a in amount_matches]
+
+    #     paid_in, withdrawn, balance = None, None, None
+
+    #     if amounts:
+    #         balance = amounts[-1]  # Always last number
+    #         prior = amounts[:-1]
+
+    #         # If there's at least one prior value, classify based on sign
+    #         if prior:
+    #             last_before_balance = prior[-1]
+    #             if last_before_balance < 0:
+    #                 withdrawn = last_before_balance
+    #             elif last_before_balance > 0:
+    #                 paid_in = last_before_balance
+
+    #     # Clean details for readability
+    #     details = block
+    #     for pattern in [
+    #         re.escape(receipt_no),
+    #         r"\d{4}-\d{2}-\d{2}",
+    #         r"\d{2}:\d{2}:\d{2}",
+    #         r"-?[\d,]+\.\d{2}",
+    #         r"(?:\n|\s{2,})(COMPLETED|FAILED|PENDING)\b",
+    #     ]:
+    #         details = re.sub(pattern, "", details, flags=re.I)
+    #     details = re.sub(r"\s+", " ", details).strip()
+
+    #     return Transaction(
+    #         receipt_no=receipt_no,
+    #         completion_time=completion_time,
+    #         details=details,
+    #         transaction_status=status,
+    #         paid_in=paid_in,
+    #         withdrawn=withdrawn,
+    #         balance=balance or 0.0,
+    #         raw=block.strip(),
+    #     )
+
+
+
 
     # -------------------------------------------------
     # Utility
@@ -261,7 +337,7 @@ if __name__ == "__main__":
     # -------------------------------------------------
     # Export to CSV
     # -------------------------------------------------
-    output_file = os.path.splitext(pdf_path)[0] + "_transactions.csv"
+    output_file = os.path.splitext(pdf_path)[0] + "_transactions4.csv"
     with open(output_file, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow(["ReceiptNo", "CompletionTime", "Details", "Status", "PaidIn", "Withdrawn", "Balance", "Raw"])
@@ -272,8 +348,8 @@ if __name__ == "__main__":
                 tx.completion_time,
                 tx.details,
                 tx.transaction_status,
-                tx.paid_in if tx.paid_in else "-",
-                tx.withdrawn if tx.withdrawn else tx.paid_in,
+                tx.paid_in,
+                tx.withdrawn,
                 tx.balance,
                 tx.raw,
             ])
