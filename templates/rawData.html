@@ -1,0 +1,111 @@
+{% extends "index.html" %}  {% set active_page = "rawData" %}
+{% block content%}
+<div>
+  <h3 class="text-muted">Raw Data</h3> </br>
+    <form action="{{ request.path }}" method="POST">
+      {{ form.csrf_token }} {{ form.hidden_tag() }}
+      <div class="row">
+        <div class="col-md-2">
+          <label> Start Date</label>
+          {{ form.startDate(class='form-control',type='date') }}
+        </div>
+        <div class="col-md-2">
+          <label> End Date</label>
+          {{ form.endDate(class='form-control',type='date') }}
+        </div>
+        <div class="col-md-2">
+          <label> Query</label>
+          {{ form.query(class='form-control',type='text') }}
+        </div>
+        <div class="col-md-2">
+            <label> Refresh</label> </br>
+          <button class="btn btn-primary" type="submit" value="submit">
+            Refresh <i class="bi bi-cloud-arrow-up-fill m-2"></i>
+          </button>
+        </div>
+      </div>
+    </form>
+  </div>
+</br></br>
+<div class="table-responsive">
+  
+  <table class="table table-bordered table-sm" id="myTable">
+    <thead>
+      <tr>
+        <th>Receipt Number</th>
+        <th>PaidIn</th>
+        <th>Withdrawn</th> 
+        <th>Balance</th>
+        <th>Completion Time (UTC)</th>
+        <th>Details</th>
+        <th>Transaction Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in transactions %}
+      <tr>
+        <td>{{ item.ReceiptNo }}</td>
+        <td>{{ item.PaidIn }}</td>
+        <td>{{ item.Withdrawn }}</td>
+        <td>{{ item.Balance }}</td>
+        <td>{{ item.CompletionTime }}</td>
+        <td>{{ item.Details }}</td>
+        <td>{{ item.Status }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Pager Controls -->
+<div id="pagination" class="d-flex justify-content-center align-items-center mt-3">
+  <button id="prevPage" class="btn btn-secondary btn-sm me-2">Previous</button>
+  <span id="pageInfo"></span>
+  <button id="nextPage" class="btn btn-secondary btn-sm ms-2">Next</button>
+</div>
+
+<script>
+  const rowsPerPage = 15;
+  let currentPage = 1;
+
+  const table = document.getElementById("myTable");
+  const tbody = table.querySelector("tbody");
+  const rows = Array.from(tbody.querySelectorAll("tr"));
+  const totalPages = Math.ceil(rows.length / rowsPerPage);
+
+  function showPage(page) {
+    const start = (page - 1) * rowsPerPage;
+    const end = start + rowsPerPage;
+
+    rows.forEach((row, i) => {
+      row.style.display = i >= start && i < end ? "" : "none";
+    });
+
+    document.getElementById("pageInfo").textContent = `Page ${page} of ${totalPages}`;
+    document.getElementById("prevPage").disabled = page === 1;
+    document.getElementById("nextPage").disabled = page === totalPages;
+  }
+
+  document.getElementById("prevPage").addEventListener("click", () => {
+    if (currentPage > 1) {
+      currentPage--;
+      showPage(currentPage);
+    }
+  });
+
+  document.getElementById("nextPage").addEventListener("click", () => {
+    if (currentPage < totalPages) {
+      currentPage++;
+      showPage(currentPage);
+    }
+  });
+
+  showPage(currentPage);
+</script>
+
+<script>
+  $(document).ready( function () {
+    $('#myTable').DataTable();
+  } );
+  </script>
+{% endblock%}

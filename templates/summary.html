@@ -1,0 +1,217 @@
+{% extends "index.html" %} {% set active_page = "summary" %} {%
+    block title%} {{ title }} {% endblock %} {% block content%}
+    <div>
+      <h3 class="text-muted">Summary Stats</h3> </br>
+        <form action="{{ request.path }}" method="POST">
+          {{ form.csrf_token }} {{ form.hidden_tag() }}
+          <div class="row">
+            <div class="col-md-2">
+              <label> Start Date</label>
+              {{ form.startDate(class='form-control',type='date') }}
+            </div>
+            <div class="col-md-2">
+              <label> End Date</label>
+              {{ form.endDate(class='form-control',type='date') }}
+            </div>
+            <div class="col-md-2">
+                <label> GetData</label> </br>
+              <button class="btn btn-primary" type="submit" value="submit">
+                Submit
+              </button>
+            </div>
+          </div>
+        </form>
+      </div> </br>
+<section id="counts" class="counts py-4">
+  <div class="container">
+    <div class="row g-3 text-center">
+      
+      <div class="col-md-3 col-6">
+        <div class="count-box p-3 shadow-sm rounded bg-light">
+          <i class="bi bi-truck-front fs-3"></i>
+          <span data-purecounter-start="0" data-purecounter-end="{{ paidInTotal }}" data-purecounter-duration="1" class="purecounter d-block fs-4 fw-bold"></span>
+          <p class="mb-0 text-muted">Paid In</p>
+        </div>
+      </div>
+
+      <div class="col-md-3 col-6">
+        <div class="count-box p-3 shadow-sm rounded bg-light">
+          <i class="bi bi-cash-coin fs-3 "></i>
+          <span data-purecounter-start="0" data-purecounter-end="{{ withdrawnTotal }}" data-purecounter-duration="1" class="purecounter d-block fs-4 fw-bold"></span>
+          <p class="mb-0 text-muted">Withdrawn</p>
+        </div>
+      </div>
+
+      <div class="col-md-3 col-6">
+        <div class="count-box p-3 shadow-sm rounded bg-light">
+          <i class="bi bi-graph-up-arrow fs-3"></i>
+          <span data-purecounter-start="0" data-purecounter-end="{{ netFlow }}" data-purecounter-duration="1" class="purecounter d-block fs-4 fw-bold"></span>
+          <p class="mb-0 text-muted">Net Flow</p>
+        </div>
+      </div>
+
+      <div class="col-md-3 col-6">
+        <div class="count-box p-3 shadow-sm rounded bg-light">
+          <i class="bi bi-list-ol fs-3"></i>
+          <span data-purecounter-start="0" data-purecounter-end="{{ transactionCount }}" data-purecounter-duration="1" class="purecounter d-block fs-4 fw-bold"></span>
+          <p class="mb-0 text-muted">Transactions</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+<br>
+
+<!-- 🗓️ Transaction Trends Section -->
+<section id="trends" class="my-4">
+  <div >
+    <!-- 🗓️ Monthly Trends -->
+    <h5 class="text-muted mt-4">Monthly Trends</h5>
+    <div class="table-responsive">
+      <table class="table table-bordered table-sm" id="monthlyTable">
+        <thead>
+          <tr>
+            <th>Month</th>
+            <th>PaidIn</th>
+            <th>Withdrawn</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in monthly_trends %}
+          <tr>
+            <td>{{ item.Month }}</td>
+            <td>{{ item.PaidIn }}</td>
+            <td>{{ item.Withdrawn }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+        <!-- Pager Controls -->
+    <div id="monthlyPagination" class="d-flex justify-content-center align-items-center mt-3">
+      <button class="btn btn-secondary btn-sm me-2 prev-btn">Previous</button>
+      <span class="page-info"></span>
+      <button class="btn btn-secondary btn-sm ms-2 next-btn">Next</button>
+    </div>
+
+        <!-- 🗓️ Weekly Trends -->
+    <h5 class="text-muted mt-4">Weekly Trends</h5>
+    <div class="table-responsive">
+      <table class="table table-bordered table-sm" id="weeklyTable">
+        <thead>
+          <tr>
+            <th>Week</th>
+            <th>PaidIn</th>
+            <th>Withdrawn</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in weekly_trends %}
+          <tr>
+            <td>{{ item.Week }}</td>
+            <td>{{ item.PaidIn }}</td>
+            <td>{{ item.Withdrawn }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+        <!-- Pager Controls -->
+    <div id="weeklyPagination" class="d-flex justify-content-center align-items-center mt-3">
+      <button class="btn btn-secondary btn-sm me-2 prev-btn">Previous</button>
+      <span class="page-info"></span>
+      <button class="btn btn-secondary btn-sm ms-2 next-btn">Next</button>
+    </div>
+
+    <!-- 🗓️ Daily Trends -->
+    <h5 class="text-muted mt-3">Daily Trends</h5>
+    <div class="table-responsive">
+      <table class="table table-bordered table-sm" id="dailyTable">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>PaidIn</th>
+            <th>Withdrawn</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in daily_trends %}
+          <tr>
+            <td>{{ item.Date }}</td>
+            <td>{{ item.PaidIn }}</td>
+            <td>{{ item.Withdrawn }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Pager Controls -->
+    <div id="dailyPagination" class="d-flex justify-content-center align-items-center mt-3">
+      <button class="btn btn-secondary btn-sm me-2 prev-btn">Previous</button>
+      <span class="page-info"></span>
+      <button class="btn btn-secondary btn-sm ms-2 next-btn">Next</button>
+    </div>
+
+  </div>
+</section>
+
+<script>
+function setupPagination(tableId, pagerId, rowsPerPage = 10) {
+  const table = document.getElementById(tableId);
+  const tbody = table.querySelector("tbody");
+  const rows = Array.from(tbody.querySelectorAll("tr"));
+  const pager = document.getElementById(pagerId);
+  const prevBtn = pager.querySelector(".prev-btn");
+  const nextBtn = pager.querySelector(".next-btn");
+  const pageInfo = pager.querySelector(".page-info");
+
+  let currentPage = 1;
+  const totalPages = Math.ceil(rows.length / rowsPerPage);
+
+  function showPage(page) {
+    const start = (page - 1) * rowsPerPage;
+    const end = start + rowsPerPage;
+
+    rows.forEach((row, i) => {
+      row.style.display = i >= start && i < end ? "" : "none";
+    });
+
+    pageInfo.textContent = `Page ${page} of ${totalPages}`;
+    prevBtn.disabled = page === 1;
+    nextBtn.disabled = page === totalPages;
+  }
+
+  prevBtn.addEventListener("click", () => {
+    if (currentPage > 1) {
+      currentPage--;
+      showPage(currentPage);
+    }
+  });
+
+  nextBtn.addEventListener("click", () => {
+    if (currentPage < totalPages) {
+      currentPage++;
+      showPage(currentPage);
+    }
+  });
+
+  showPage(currentPage);
+}
+
+// Initialize pagers for all trend tables
+document.addEventListener("DOMContentLoaded", function() {
+  setupPagination("dailyTable", "dailyPagination", 15);
+  setupPagination("weeklyTable", "weeklyPagination", 15);
+  setupPagination("monthlyTable", "monthlyPagination", 15);
+});
+</script>
+
+
+
+<script src='https://cdn.plot.ly/plotly-latest.min.js'></script>
+
+</div>
+{% endblock%}
