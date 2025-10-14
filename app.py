@@ -98,10 +98,23 @@ class PdfService:
         """
         Combines all text from PDF and parses M-PESA transactions.
         """
+        # all_text = ""
+        # for i in range(len(pdf.pages)):
+        #     page_text = PdfService.extract_text_from_page(pdf, i + 1)
+        #     all_text += page_text + "\n"
         all_text = ""
         for i in range(len(pdf.pages)):
             page_text = PdfService.extract_text_from_page(pdf, i + 1)
-            all_text += page_text + "\n"
+            all_text += page_text.strip() + "\n\n---PAGEBREAK---\n\n"
+
+        # ✅ Clean up footer text before parsing
+        all_text = re.sub(
+            r"Disclaimer:.*?(WMF\d{6}GT|Safaricom|Page\s+\d+\s+of\s+\d+)",
+            "",
+            all_text,
+            flags=re.S
+        )
+
 
         transactions = PdfService.parse_transactions(all_text)
         return MPesaStatement(transactions)
@@ -214,68 +227,8 @@ class PdfService:
             paid_in=paid_in,
             withdrawn=withdrawn,
             balance=balance or 0,
-            raw=block.strip(),
+            raw=block,
         )
-
-    # @staticmethod
-    # def _parse_transaction_block(block: str) -> Optional[Transaction]:
-    #     # Receipt
-    #     receipt_match = re.search(r"\b([A-Z0-9]{10})\b", block)
-    #     if not receipt_match:
-    #         return None
-    #     receipt_no = receipt_match.group(1)
-
-    #     # Completion time
-    #     date_match = re.search(r"\d{4}-\d{2}-\d{2}", block)
-    #     time_match = re.search(r"\d{2}:\d{2}:\d{2}", block)
-    #     completion_time = f"{date_match.group()} {time_match.group()}" if (date_match and time_match) else ""
-
-    #     # Status (avoid picking from details)
-    #     status_match = re.search(r"(?:\n|\s{2,})(COMPLETED|FAILED|PENDING)\b", block, re.I)
-    #     status = status_match.group(1).capitalize() if status_match else "Unknown"
-
-    #     # Extract all numeric amounts in order (with sign)
-    #     amount_matches = re.findall(r"-?[\d,]+\.\d{2}", block)
-    #     amounts = [PdfService.parse_amount(a) for a in amount_matches]
-
-    #     paid_in, withdrawn, balance = None, None, None
-
-    #     if amounts:
-    #         balance = amounts[-1]  # Always last number
-    #         prior = amounts[:-1]
-
-    #         # If there's at least one prior value, classify based on sign
-    #         if prior:
-    #             last_before_balance = prior[-1]
-    #             if last_before_balance < 0:
-    #                 withdrawn = last_before_balance
-    #             elif last_before_balance > 0:
-    #                 paid_in = last_before_balance
-
-    #     # Clean details for readability
-    #     details = block
-    #     for pattern in [
-    #         re.escape(receipt_no),
-    #         r"\d{4}-\d{2}-\d{2}",
-    #         r"\d{2}:\d{2}:\d{2}",
-    #         r"-?[\d,]+\.\d{2}",
-    #         r"(?:\n|\s{2,})(COMPLETED|FAILED|PENDING)\b",
-    #     ]:
-    #         details = re.sub(pattern, "", details, flags=re.I)
-    #     details = re.sub(r"\s+", " ", details).strip()
-
-    #     return Transaction(
-    #         receipt_no=receipt_no,
-    #         completion_time=completion_time,
-    #         details=details,
-    #         transaction_status=status,
-    #         paid_in=paid_in,
-    #         withdrawn=withdrawn,
-    #         balance=balance or 0.0,
-    #         raw=block.strip(),
-    #     )
-
-
 
 
     # -------------------------------------------------
@@ -294,26 +247,6 @@ class PdfService:
         except ValueError:
             return 0.0
 
-
-# -------------------------------------------------
-# Run directly (example)
-# -------------------------------------------------
-# if __name__ == "__main__":
-#     pdf_path = input("Enter path to M-PESA statement PDF: ").strip()
-#     result = PdfService.load_pdf(pdf_path)
-
-#     if result["is_protected"]:
-#         print("PDF is password protected.")
-#         pwd = input("Enter password: ")
-#         pdf = PdfService.unlock_pdf(pdf_path, pwd)
-#     else:
-#         pdf = result["pdf"]
-
-#     statement = PdfService.parse_mpesa_statement(pdf)
-#     print(f"\n✅ Parsed {len(statement.transactions)} transactions\n")
-
-#     for tx in statement.transactions[:10]:  # show first 10
-#         print(f"{tx.receipt_no} | {tx.completion_time} | {tx.details[:60]}...")
 
 
 if __name__ == "__main__":
@@ -337,7 +270,7 @@ if __name__ == "__main__":
     # -------------------------------------------------
     # Export to CSV
     # -------------------------------------------------
-    output_file = os.path.splitext(pdf_path)[0] + "_transactions4.csv"
+    output_file = os.path.splitext(pdf_path)[0] + "_transactions6.csv"
     with open(output_file, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow(["ReceiptNo", "CompletionTime", "Details", "Status", "PaidIn", "Withdrawn", "Balance", "Raw"])
