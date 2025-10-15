@@ -1,0 +1,99 @@
+{% extends "index.html" %} {% set active_page = "trends" %}{% block title%} {{
+title }} {% endblock %} {% block content%}
+
+<div>
+    <h3 class="text-muted">Category Breakdown & Counterparties</h3> </br>
+        <form action="{{ request.path }}" method="POST">
+          {{ form.csrf_token }} {{ form.hidden_tag() }}
+          <div class="row">
+            <div class="col-md-2">
+              <label> Start Date</label>
+              {{ form.startDate(class='form-control',type='date') }}
+            </div>
+            <div class="col-md-2">
+              <label> End Date</label>
+              {{ form.endDate(class='form-control',type='date') }}
+            </div>
+            <div class="col-md-2">
+              <label> Period</label>
+              {{ form.period(class='form-control',type='select') }}
+            </div>
+            <div class="col-md-2">
+                <label> Refresh</label> </br>
+              <button class="btn btn-primary" type="submit" value="submit">
+                Submit
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+</br></br>
+
+<div class=" mt-4">
+
+  {% if balance_summary %}
+  <div class="card mb-4 shadow-sm">
+    <div class="card-header bg-success text-white">
+      <h5 class="mb-0">💰 Balance Summary</h5>
+    </div>
+    <div class="card-body">
+      <table class="table table-sm table-striped align-middle">
+        <tbody>
+          {% for key, value in balance_summary.items() %}
+          <tr>
+            <th style="width: 50%;">{{ key }}</th>
+            <td style="text-align: right;">{{ "{:,.2f}".format(value) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if efficiency_summary %}
+  <div class="card mb-4 shadow-sm">
+    <div class="card-header bg-info text-white">
+      <h5 class="mb-0">📊 Spending Efficiency Summary</h5>
+    </div>
+    <div class="card-body">
+      <table class="table table-sm table-striped align-middle">
+        <tbody>
+          {% for key, value in efficiency_summary.items() %}
+          <tr>
+            <th style="width: 50%;">{{ key }}</th>
+            <td style="text-align: right;">{{ "{:,.2f}".format(value) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+
+<div>
+    <h2 class="text-muted mt-4">Visualizations</h2> </br>
+    <div id='spending_plot'></div>
+    <div id='balance_plot'></div>
+    </div>
+</br></br>
+<div>
+
+
+
+    <script src="https://cdn.plot.ly/plotly-2.30.0.min.js"></script> 
+
+<script type="text/javascript">
+    var balance_plot = {{ balance_plot | safe }};
+    Plotly.newPlot('balance_plot', balance_plot, {});
+</script>
+
+<script type="text/javascript">
+    var spending_plot = {{ spending_plot | safe }};
+    Plotly.newPlot('spending_plot', spending_plot, {});
+</script>
+
+
+{% endblock %}

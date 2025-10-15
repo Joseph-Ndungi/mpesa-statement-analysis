@@ -1,3 +1,4 @@
+import glob
 import re
 from dataclasses import dataclass
 from typing import List, Optional, Dict, Any
@@ -7,15 +8,29 @@ from PyPDF2.errors import PdfReadError
 import io
 import csv
 import os
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_file
+import pandas as pd
+from werkzeug.utils import secure_filename
+from main import create_app 
+from forms import *
 
+
+app = create_app()
+
+ALLOWED_EXTENSIONS = {"pdf"}
+
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+app.config['SECRET_KEY'] = '5791628bb0b13ce0c676dfde280ba245'
 
 @dataclass
 class Transaction:
-    receipt_no: str
-    completion_time: str
+    receiptNo: str
+    completionTime: str
     details: str
-    transaction_status: str
-    paid_in: Optional[float] = None
+    transactionStatus: str
+    paidIn: Optional[float] = None
     withdrawn: Optional[float] = None
     balance: Optional[float] = None
     raw: Optional[str] = None
@@ -169,7 +184,7 @@ class PdfService:
             except Exception:
                 return datetime.min
 
-        transactions.sort(key=lambda tr: safe_parse_date(tr.completion_time))
+        transactions.sort(key=lambda tr: safe_parse_date(tr.completionTime))
         return transactions
 
     @staticmethod
@@ -178,12 +193,12 @@ class PdfService:
         receipt_match = re.search(r"\b([A-Z0-9]{10})\b", block)
         if not receipt_match:
             return None
-        receipt_no = receipt_match.group(1)
+        receiptNo = receipt_match.group(1)
 
         # Extract completion time
         date_match = re.search(r"\d{4}-\d{2}-\d{2}", block)
         time_match = re.search(r"\d{2}:\d{2}:\d{2}", block)
-        completion_time = f"{date_match.group()} {time_match.group()}" if (date_match and time_match) else ""
+        completionTime = f"{date_match.group()} {time_match.group()}" if (date_match and time_match) else ""
         
         # Fix: restore line break before "Completed/Failed/Pending" if it was merged with details
         block = re.sub(r"(?i)(?<=\w)(COMPLETED|FAILED|PENDING)", r"\n\1", block)
@@ -197,7 +212,7 @@ class PdfService:
         amount_matches = re.findall(r"-?[\d,]+\.\d{2}", block)
         amounts = [PdfService.parse_amount(a) for a in amount_matches]
 
-        paid_in, withdrawn, balance = None, None, None
+        paidIn, withdrawn, balance = None, None, None
 
         if amounts:
             balance = amounts[-1]  # Last number is almost always the balance
@@ -205,12 +220,12 @@ class PdfService:
             negatives = [a for a in amounts[:-1] if a < 0]
             positives = [a for a in amounts[:-1] if a > 0]
             withdrawn = negatives[-1] if negatives else None
-            paid_in = positives[-1] if positives else None
+            paidIn = positives[-1] if positives else None
 
         # Clean details
         details = block
         for pattern in [
-            re.escape(receipt_no),
+            re.escape(receiptNo),
             r"\d{4}-\d{2}-\d{2}",
             r"\d{2}:\d{2}:\d{2}",
             r"-?[\d,]+\.\d{2}",
@@ -220,11 +235,11 @@ class PdfService:
         details = re.sub(r"\s+", " ", details).strip()
 
         return Transaction(
-            receipt_no=receipt_no,
-            completion_time=completion_time,
+            receiptNo=receiptNo,
+            completionTime=completionTime,
             details=details,
-            transaction_status=status,
-            paid_in=paid_in,
+            transactionStatus=status,
+            paidIn=paidIn,
             withdrawn=withdrawn,
             balance=balance or 0,
             raw=block,
@@ -249,42 +264,110 @@ class PdfService:
 
 
 
-if __name__ == "__main__":
-    pdf_path = input("Enter path to M-PESA statement PDF: ").strip()
-    result = PdfService.load_pdf(pdf_path)
+@app.route("/", methods=["GET", "POST"])
+def index():
+    if request.method == "POST":
+        file = request.files.get("file")
+        password = request.form.get("password")  # optional PDF password field
 
-    if result["is_protected"]:
-        print("PDF is password protected.")
-        pwd = input("Enter password: ")
-        pdf = PdfService.unlock_pdf(pdf_path, pwd)
-    else:
-        pdf = result["pdf"]
+        # --- Validate upload ---
+        if not file or file.filename == "":
+            flash("Please select a PDF file", "danger")
+            return redirect(request.url)
 
-    statement = PdfService.parse_mpesa_statement(pdf)
-    print(f"\n✅ Parsed {len(statement.transactions)} transactions\n")
+        if not allowed_file(file.filename):
+            flash("Unsupported file type. Please upload a PDF.", "danger")
+            return redirect(request.url)
 
-    # Preview first 10
-    for tx in statement.transactions[:10]:
-        print(f"{tx.receipt_no} | {tx.completion_time} | {tx.details[:60]}...")
+        # --- Create uploads folder (same directory as app) ---
+        upload_dir = os.path.join(os.getcwd(), "uploads")
+        os.makedirs(upload_dir, exist_ok=True)
 
-    # -------------------------------------------------
-    # Export to CSV
-    # -------------------------------------------------
-    output_file = os.path.splitext(pdf_path)[0] + "_transactions6.csv"
-    with open(output_file, "w", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-        writer.writerow(["ReceiptNo", "CompletionTime", "Details", "Status", "PaidIn", "Withdrawn", "Balance", "Raw"])
+        # --- Save the uploaded PDF in the uploads folder ---
+        filename = secure_filename(file.filename)
+        pdf_path = os.path.join(upload_dir, filename)
+        file.save(pdf_path)
 
-        for tx in statement.transactions:
+        # --- Load PDF and handle password protection ---
+        result = PdfService.load_pdf(pdf_path)
+
+        if result["is_protected"]:
+            if not password:
+                flash("PDF is password protected. Please enter the password.", "warning")
+            pdf = PdfService.unlock_pdf(pdf_path, password)
+        else:
+            pdf = result["pdf"]
+
+        # --- Parse M-PESA Statement ---
+        statement = PdfService.parse_mpesa_statement(pdf)
+        tx_count = len(statement.transactions)
+
+        # --- Export transactions to CSV (in uploads folder) ---
+        output_file = os.path.splitext(pdf_path)[0] + "_transactions.csv"
+
+        with open(output_file, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
             writer.writerow([
-                tx.receipt_no,
-                tx.completion_time,
-                tx.details,
-                tx.transaction_status,
-                tx.paid_in,
-                tx.withdrawn,
-                tx.balance,
-                tx.raw,
+                "ReceiptNo", "CompletionTime", "Details", "Status",
+                "PaidIn", "Withdrawn", "Balance", "Raw"
             ])
 
-    print(f"\n📁 CSV exported successfully to: {output_file}")
+            for tx in statement.transactions:
+                writer.writerow([
+                    tx.receiptNo,
+                    tx.completionTime,
+                    tx.details,
+                    tx.transactionStatus,
+                    tx.paidIn,
+                    tx.withdrawn,
+                    tx.balance,
+                    tx.raw,
+                ])
+
+        flash(f"✅ Parsed {tx_count} transactions successfully! CSV saved in /uploads folder.", "success")
+
+        # --- Commented out: returning CSV for download ---
+        # return send_file(output_file, as_attachment=True)
+
+    return render_template("dashboard.html", require_password=False)
+
+
+
+@app.route('/transactions' , methods=['GET', 'POST'])
+def rawData():
+    form=DateForm()
+    
+    folderPath = 'uploads/'
+
+    csvFiles = glob.glob(os.path.join(folderPath, '*.csv'))
+
+    # Read and combine all CSVs into one DataFrame
+    dfList = []
+    for file in csvFiles:
+        tempDf = pd.read_csv(file, parse_dates=['CompletionTime'])
+        dfList.append(tempDf)
+
+    # Concatenate all data into a single DataFrame
+    df = pd.concat(dfList, ignore_index=True)
+    # Drop duplicate transactions based on unique ReceiptNo
+    df = df.drop_duplicates(subset=["ReceiptNo"], keep="first").reset_index(drop=True)
+    df["PaidIn"] = pd.to_numeric(df["PaidIn"].round(2), errors="coerce").fillna(0)
+    df["Withdrawn"] = pd.to_numeric(df["Withdrawn"].round(2), errors="coerce").fillna(0)
+
+
+    if request.method == 'POST':
+        # Handle form submission
+        startDate =form.startDate.data.strftime('%Y-%m-%d') 
+        endDate = form.endDate.data.strftime('%Y-%m-%d')
+
+        # Filter DataFrame based on form inputs
+        if startDate:
+            df = df[df['CompletionTime'] >= pd.to_datetime(startDate)]
+        if endDate:
+            df = df[df['CompletionTime'] <= pd.to_datetime(endDate)]
+        
+    return render_template('rawData.html', transactions=df.to_dict('records'), form=form)
+
+
+if __name__ == "__main__":
+    app.run(debug=True)
