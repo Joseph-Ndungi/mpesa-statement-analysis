@@ -24,7 +24,7 @@ for file in csvFiles:
 # Concatenate all data into a single DataFrame
 df = pd.concat(dfList, ignore_index=True)
 # Drop duplicate transactions based on unique ReceiptNo
-df = df.drop_duplicates(subset=["ReceiptNo"], keep="first").reset_index(drop=True)
+#df = df.drop_duplicates(subset=["ReceiptNo"], keep="first").reset_index(drop=True)
 df["Withdrawn"] = df["Withdrawn"].abs()
 
 

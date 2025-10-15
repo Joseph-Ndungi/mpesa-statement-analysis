@@ -140,72 +140,98 @@ def spending_trends_over_time(df: pd.DataFrame, freq="M"):
 
     return fig_json, grouped
 
+from datetime import date, datetime
+
 @trendsBp.route("/trends", methods=["GET", "POST"])
 def trends():
     form = FilterForm()
-    period = "M"  # Default to monthly
-    balance_plot = None
-    spending_plot = None
-    balance_summary = None
-    efficiency_summary = None
 
+    # --- Default configuration ---
+    default_start = date(2025, 7, 1)   # July this year
+    default_end = date.today()
+    period = "W"  # Default to weekly
+
+    balance_plot = spending_plot = None
+    balance_summary = efficiency_summary = None
+
+    # --- Determine whether to use defaults or submitted form ---
     if request.method == "POST" and form.validate_on_submit():
-        start_date = form.startDate.data
-        end_date = form.endDate.data
-        period = form.period.data or "M"
+        start_date = form.startDate.data or default_start
+        end_date = form.endDate.data or default_end
+        period = form.period.data or "W"
+    else:
+        # On GET, auto-set defaults
+        start_date = default_start
+        end_date = default_end
+        form.startDate.data = default_start
+        form.endDate.data = default_end
+        form.period.data = period
 
-        # --- Load all uploaded CSVs ---
-        uploads_dir = os.path.join(os.getcwd(), "uploads")
-        csv_files = [
-            os.path.join(uploads_dir, f)
-            for f in os.listdir(uploads_dir)
-            if f.endswith(".csv")
-        ]
+    # --- Load all uploaded CSVs ---
+    uploads_dir = os.path.join(os.getcwd(), "uploads")
+    csv_files = [
+        os.path.join(uploads_dir, f)
+        for f in os.listdir(uploads_dir)
+        if f.endswith(".csv")
+    ]
 
-        if not csv_files:
-            flash("⚠️ No transaction CSVs found in uploads directory.", "warning")
-            return redirect(request.url)
+    if not csv_files:
+        flash("⚠️ No transaction CSVs found in uploads directory.", "warning")
+        return render_template(
+            "trends.html",
+            title="Trends",
+            form=form,
+            period=period,
+            balance_plot=None,
+            spending_plot=None,
+            balance_summary=None,
+            efficiency_summary=None,
+        )
 
-        # --- Read and combine CSVs ---
-        df_list = [pd.read_csv(f, parse_dates=["CompletionTime"]) for f in csv_files]
-        df = pd.concat(df_list, ignore_index=True)
+    # --- Read and combine CSVs ---
+    df_list = [pd.read_csv(f, parse_dates=["CompletionTime"]) for f in csv_files]
+    df = pd.concat(df_list, ignore_index=True)
 
-        # Drop duplicates based on ReceiptNo
-        #df = df.drop_duplicates(subset=["ReceiptNo"], keep="first")
+    # Drop duplicate transactions
+    df = df.drop_duplicates(subset=["ReceiptNo"], keep="first")
 
-        # Filter by selected date range if provided
-        if start_date and end_date:
-            df = df[(df["CompletionTime"] >= pd.Timestamp(start_date)) & (df["CompletionTime"] <= pd.Timestamp(end_date))]
-        elif start_date:
-            df = df[df["CompletionTime"] >= pd.Timestamp(start_date)]
-        elif end_date:
-            df = df[df["CompletionTime"] <= pd.Timestamp(end_date)]
+    # --- Filter by selected date range ---
+    df = df[(df["CompletionTime"] >= pd.Timestamp(start_date)) &
+            (df["CompletionTime"] <= pd.Timestamp(end_date))]
 
-        # Ensure Withdrawn column is positive for analysis
-        df["Withdrawn"] = df["Withdrawn"].abs()
+    if df.empty:
+        flash("⚠️ No transactions found in the selected date range.", "warning")
+        return render_template(
+            "trends.html",
+            title="Trends",
+            form=form,
+            period=period,
+            balance_plot=None,
+            spending_plot=None,
+            balance_summary=None,
+            efficiency_summary=None,
+        )
 
-        if df.empty:
-            flash("⚠️ No transactions found in the selected date range.", "warning")
-            return redirect(request.url)
+    # --- Clean up numeric columns ---
+    df["Withdrawn"] = pd.to_numeric(df["Withdrawn"], errors="coerce").abs()
+    df["PaidIn"] = pd.to_numeric(df["PaidIn"], errors="coerce").fillna(0)
 
-        # --- Run analytics ---
-        balance_plot, balance_summary = plot_balance_evolution(df)
-        efficiency_summary = spending_efficiency_metrics(df)
-        spending_plot, _ = spending_trends_over_time(df, freq=period)
-        
-        #print (balance_summary)
-        #print (efficiency_summary)
-
+    # --- Run analytics ---
+    balance_plot, balance_summary = plot_balance_evolution(df)
+    efficiency_summary = spending_efficiency_metrics(df)
+    spending_plot, _ = spending_trends_over_time(df, freq=period)
 
     # --- Render results ---
     return render_template(
         "trends.html",
+        title="Trends",
         form=form,
         period=period,
         balance_plot=balance_plot,
+        spending_plot=spending_plot,
         balance_summary=balance_summary,
         efficiency_summary=efficiency_summary,
-        spending_plot=spending_plot,
-        title="Trends",
     )
+
+
 

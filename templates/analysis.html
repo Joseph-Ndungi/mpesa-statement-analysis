@@ -1,6 +1,6 @@
 {% extends "index.html" %} {% set active_page = "analysis" %} {% block title%} {{ title }} {% endblock %} {% block content%}
 <div>
-    <h3 class="text-muted">Category Breakdown & Counterparties</h3> </br>
+    <h3 class="text-muted">Periodic Cashflow Analysis</h3> </br>
         <form action="{{ request.path }}" method="POST">
           {{ form.csrf_token }} {{ form.hidden_tag() }}
           <div class="row">
