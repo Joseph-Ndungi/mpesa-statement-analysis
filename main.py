@@ -14,9 +14,11 @@ def create_app():
     from views.analysis import analysisBp
     from views.insights import insightsBp
     from views.summary import summaryBp
+    from views.trends import trendsBp
 
     app.register_blueprint(analysisBp)
     app.register_blueprint(insightsBp)
     app.register_blueprint(summaryBp)
+    app.register_blueprint(trendsBp)
 
     return app

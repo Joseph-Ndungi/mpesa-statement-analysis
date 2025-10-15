@@ -12,9 +12,14 @@ import numpy as np
 class FilterForm(FlaskForm):
     startDate = DateField(default=datetime.strptime('2025-01-01','%Y-%m-%d'),validators=[InputRequired()])
     endDate = DateField(default=datetime.strptime('2025-12-31','%Y-%m-%d'),validators=[InputRequired()])
-    query = StringField('Query', validators=[InputRequired()])
+    #period = SelectField(choices=('Monthly','Weekly'), validators=[InputRequired()])
+    period = SelectField(
+        'Period',
+        choices=[('M', 'Monthly'), ('W', 'Weekly')],
+        default='M'
+    )
     
 
 class DateForm(FlaskForm):
-    startDate = DateField(default=datetime.strptime('2022-01-01','%Y-%m-%d'),validators=[InputRequired()])
-    endDate = DateField(default=datetime.strptime('2022-12-31','%Y-%m-%d'),validators=[InputRequired()])
+    startDate = DateField(default=datetime.strptime('2025-01-01','%Y-%m-%d'),validators=[InputRequired()])
+    endDate = DateField(default=datetime.strptime('2025-12-31','%Y-%m-%d'),validators=[InputRequired()])

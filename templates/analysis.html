@@ -1,0 +1,127 @@
+{% extends "index.html" %} {% set active_page = "analysis" %} {% block title%} {{ title }} {% endblock %} {% block content%}
+<div>
+    <h3 class="text-muted">Category Breakdown & Counterparties</h3> </br>
+        <form action="{{ request.path }}" method="POST">
+          {{ form.csrf_token }} {{ form.hidden_tag() }}
+          <div class="row">
+            <div class="col-md-2">
+              <label> Start Date</label>
+              {{ form.startDate(class='form-control',type='date') }}
+            </div>
+            <div class="col-md-2">
+              <label> End Date</label>
+              {{ form.endDate(class='form-control',type='date') }}
+            </div>
+            <div class="col-md-2">
+              <label> Period</label>
+              {{ form.period(class='form-control',type='select') }}
+            </div>
+            <div class="col-md-2">
+                <label> Refresh</label> </br>
+              <button class="btn btn-primary" type="submit" value="submit">
+                Submit
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+</br></br>
+
+<div class="table-responsive">
+  
+  <table class="table table-bordered table-sm" id="myTable">
+    <thead>
+      <tr>
+        <th>Period</th>
+        <th>Inflow</th>
+        <th>Outflow</th> 
+        <th>NetFlow</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in cashflow %}
+      <tr>
+        <td>{{ item.Month or item.Week}}</td>
+        <td>{{ item.Inflow }}</td>
+        <td>{{ item.Outflow }}</td>
+        <td>{{ item.NetFlow }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Pager Controls -->
+<div id="pagination" class="d-flex justify-content-center align-items-center mt-3">
+  <button id="prevPage" class="btn btn-secondary btn-sm me-2">Previous</button>
+  <span id="pageInfo"></span>
+  <button id="nextPage" class="btn btn-secondary btn-sm ms-2">Next</button>
+</div>
+
+<div>
+    <h2 class="text-muted mt-4">Visualizations</h2> </br>
+    <div id='cashflow_graph'></div>
+    <div id='category_graph'></div>
+    <div id='merchant_graph'></div>
+
+    </div>
+</br></br>
+<div>
+<script src="https://cdn.plot.ly/plotly-2.30.0.min.js"></script> 
+
+<script type="text/javascript">
+    var cashflow_graph = {{ cashflow_graph | safe }};
+    Plotly.newPlot('cashflow_graph', cashflow_graph, {});
+</script>
+
+<script type="text/javascript">
+    var category_graph = {{ category_graph | safe }};
+    Plotly.newPlot('category_graph', category_graph, {});
+</script>
+
+<script type="text/javascript">
+    var merchant_graph = {{ merchant_graph | safe }};
+    Plotly.newPlot('merchant_graph', merchant_graph, {});
+</script>
+
+<script>
+  const rowsPerPage = 15;
+  let currentPage = 1;
+
+  const table = document.getElementById("myTable");
+  const tbody = table.querySelector("tbody");
+  const rows = Array.from(tbody.querySelectorAll("tr"));
+  const totalPages = Math.ceil(rows.length / rowsPerPage);
+
+  function showPage(page) {
+    const start = (page - 1) * rowsPerPage;
+    const end = start + rowsPerPage;
+
+    rows.forEach((row, i) => {
+      row.style.display = i >= start && i < end ? "" : "none";
+    });
+
+    document.getElementById("pageInfo").textContent = `Page ${page} of ${totalPages}`;
+    document.getElementById("prevPage").disabled = page === 1;
+    document.getElementById("nextPage").disabled = page === totalPages;
+  }
+
+  document.getElementById("prevPage").addEventListener("click", () => {
+    if (currentPage > 1) {
+      currentPage--;
+      showPage(currentPage);
+    }
+  });
+
+  document.getElementById("nextPage").addEventListener("click", () => {
+    if (currentPage < totalPages) {
+      currentPage++;
+      showPage(currentPage);
+    }
+  });
+
+  showPage(currentPage);
+</script>
+
+
+{% endblock%}

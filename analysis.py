@@ -520,4 +520,4 @@ def spending_trends_over_time(df: pd.DataFrame, freq="M"):
 
 
 efficiency_summary = spending_efficiency_metrics(df)
-spending_trends = spending_trends_over_time(df, freq="W")  # or "M"
+spending_trends = spending_trends_over_time(df, freq="M")  # or "M"

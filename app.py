@@ -1,3 +1,4 @@
+import glob
 import re
 from dataclasses import dataclass
 from typing import List, Optional, Dict, Any
@@ -334,25 +335,37 @@ def index():
 
 @app.route('/transactions' , methods=['GET', 'POST'])
 def rawData():
-    form=FilterForm()
-    df = pd.read_csv('uploads/MPESA_Statement_2025-10-10_to_2025-07-10_2547xxxxxx604_transactions.csv', parse_dates=['CompletionTime'])
-    df["PaidIn"] = pd.to_numeric(df["PaidIn"], errors="coerce").fillna(0)
-    df["Withdrawn"] = pd.to_numeric(df["Withdrawn"], errors="coerce").fillna(0)
+    form=DateForm()
+    
+    folderPath = 'uploads/'
+
+    csvFiles = glob.glob(os.path.join(folderPath, '*.csv'))
+
+    # Read and combine all CSVs into one DataFrame
+    dfList = []
+    for file in csvFiles:
+        tempDf = pd.read_csv(file, parse_dates=['CompletionTime'])
+        dfList.append(tempDf)
+
+    # Concatenate all data into a single DataFrame
+    df = pd.concat(dfList, ignore_index=True)
+    # Drop duplicate transactions based on unique ReceiptNo
+    df = df.drop_duplicates(subset=["ReceiptNo"], keep="first").reset_index(drop=True)
+    df["PaidIn"] = pd.to_numeric(df["PaidIn"].round(2), errors="coerce").fillna(0)
+    df["Withdrawn"] = pd.to_numeric(df["Withdrawn"].round(2), errors="coerce").fillna(0)
+
 
     if request.method == 'POST':
         # Handle form submission
         startDate =form.startDate.data.strftime('%Y-%m-%d') 
         endDate = form.endDate.data.strftime('%Y-%m-%d')
-        query = form.query.data
 
         # Filter DataFrame based on form inputs
         if startDate:
             df = df[df['CompletionTime'] >= pd.to_datetime(startDate)]
         if endDate:
             df = df[df['CompletionTime'] <= pd.to_datetime(endDate)]
-        if query:
-            df = df[df['Details'].str.contains(query, case=False, na=False)]
-
+        
     return render_template('rawData.html', transactions=df.to_dict('records'), form=form)
 
 

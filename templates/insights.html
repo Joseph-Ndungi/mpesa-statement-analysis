@@ -1,0 +1,187 @@
+{% extends "index.html" %} {% set active_page = "insights" %} {% block title%} {{ title }} {% endblock %} {% block content%}
+<div>
+    <h3 class="text-muted">Category Breakdown & Counterparties</h3> </br>
+        <form action="{{ request.path }}" method="POST">
+          {{ form.csrf_token }} {{ form.hidden_tag() }}
+          <div class="row">
+            <div class="col-md-2">
+              <label> Start Date</label>
+              {{ form.startDate(class='form-control',type='date') }}
+            </div>
+            <div class="col-md-2">
+              <label> End Date</label>
+              {{ form.endDate(class='form-control',type='date') }}
+            </div>
+            <div class="col-md-2">
+                <label> GetData</label> </br>
+              <button class="btn btn-primary" type="submit" value="submit">
+                Submit
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+</br></br>
+
+<section id="trends" class="my-4">
+  <div >
+    <h5 class="text-muted mt-4">Category Summary</h5>
+    <div class="table-responsive">
+  <table class="table table-bordered table-sm" id="monthlyTable">
+    <thead>
+      <tr>
+        <th>Category</th>
+        <th>PaidIn</th>
+        <th>Withdrawn</th> 
+        <th>Net (In - OUT)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in category_summary %}
+      <tr>
+        <td>{{ item.Category }}</td>
+        <td>{{ item.PaidIn }}</td>
+        <td>{{ item.Withdrawn }}</td>
+        <td>{{ item.NetAmount }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+    </div>
+        <!-- Pager Controls -->
+    <div id="monthlyPagination" class="d-flex justify-content-center align-items-center mt-3">
+      <button class="btn btn-secondary btn-sm me-2 prev-btn">Previous</button>
+      <span class="page-info"></span>
+      <button class="btn btn-secondary btn-sm ms-2 next-btn">Next</button>
+    </div>
+
+    <h5 class="text-muted mt-4">Top Counterparties Count</h5>
+    <div class="table-responsive">
+      <table class="table table-bordered table-sm" id="weeklyTable">
+        <thead>
+          <tr>
+            <th>Counterparty</th>
+            <th>Count</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in top_counterparties_count %}
+          <tr>
+            <td>{{ item.Counterparty }}</td>
+            <td>{{ item.Count }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+        <!-- Pager Controls -->
+    <div id="weeklyPagination" class="d-flex justify-content-center align-items-center mt-3">
+      <button class="btn btn-secondary btn-sm me-2 prev-btn">Previous</button>
+      <span class="page-info"></span>
+      <button class="btn btn-secondary btn-sm ms-2 next-btn">Next</button>
+    </div>
+
+        <h5 class="text-muted mt-3">Top Counterparties Value</h5>
+    <div class="table-responsive">
+      <table class="table table-bordered table-sm" id="dailyTable">
+        <thead>
+          <tr>
+            <th>Counterparty</th>
+            <th>NetAmount</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in top_counterparties_value %}
+          <tr>
+            <td>{{ item.Counterparty }}</td>
+            <td>{{ item.NetAmount }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Pager Controls -->
+    <div id="dailyPagination" class="d-flex justify-content-center align-items-center mt-3">
+      <button class="btn btn-secondary btn-sm me-2 prev-btn">Previous</button>
+      <span class="page-info"></span>
+      <button class="btn btn-secondary btn-sm ms-2 next-btn">Next</button>
+    </div>
+  </div>
+</section>
+
+<div>
+    <h2 class="text-muted mt-4">Visualizations</h2> </br>
+    <div id='categoryFig'></div>
+    <div id='topCounterpartiesFig'></div>
+
+    </div>
+</br></br>
+<div>
+<script src="https://cdn.plot.ly/plotly-2.30.0.min.js"></script> 
+
+<script type="text/javascript">
+    var categoryGraph = {{ category_graph | safe }};
+    Plotly.newPlot('categoryFig', categoryGraph, {});
+</script>
+
+<script type="text/javascript">
+    var topCounterpartiesGraph = {{ top_counterparties_graph | safe }};
+    Plotly.newPlot('topCounterpartiesFig', topCounterpartiesGraph, {});
+</script>
+</script>
+
+<script>
+function setupPagination(tableId, pagerId, rowsPerPage = 10) {
+  const table = document.getElementById(tableId);
+  const tbody = table.querySelector("tbody");
+  const rows = Array.from(tbody.querySelectorAll("tr"));
+  const pager = document.getElementById(pagerId);
+  const prevBtn = pager.querySelector(".prev-btn");
+  const nextBtn = pager.querySelector(".next-btn");
+  const pageInfo = pager.querySelector(".page-info");
+
+  let currentPage = 1;
+  const totalPages = Math.ceil(rows.length / rowsPerPage);
+
+  function showPage(page) {
+    const start = (page - 1) * rowsPerPage;
+    const end = start + rowsPerPage;
+
+    rows.forEach((row, i) => {
+      row.style.display = i >= start && i < end ? "" : "none";
+    });
+
+    pageInfo.textContent = `Page ${page} of ${totalPages}`;
+    prevBtn.disabled = page === 1;
+    nextBtn.disabled = page === totalPages;
+  }
+
+  prevBtn.addEventListener("click", () => {
+    if (currentPage > 1) {
+      currentPage--;
+      showPage(currentPage);
+    }
+  });
+
+  nextBtn.addEventListener("click", () => {
+    if (currentPage < totalPages) {
+      currentPage++;
+      showPage(currentPage);
+    }
+  });
+
+  showPage(currentPage);
+}
+
+// Initialize pagers for all trend tables
+document.addEventListener("DOMContentLoaded", function() {
+  setupPagination("dailyTable", "dailyPagination", 15);
+  setupPagination("weeklyTable", "weeklyPagination", 15);
+  setupPagination("monthlyTable", "monthlyPagination", 15);
+});
+</script>
+
+
+{% endblock%}
