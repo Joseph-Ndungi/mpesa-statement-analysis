@@ -333,7 +333,7 @@ def index():
 
 
 
-@app.route('/transactions' , methods=['GET', 'POST'])
+@app.route('/rawData' , methods=['GET', 'POST'])
 def rawData():
     form=DateForm()
     
@@ -350,7 +350,7 @@ def rawData():
     # Concatenate all data into a single DataFrame
     df = pd.concat(dfList, ignore_index=True)
     # Drop duplicate transactions based on unique ReceiptNo
-    df = df.drop_duplicates(subset=["ReceiptNo"], keep="first").reset_index(drop=True)
+    #df = df.drop_duplicates(subset=["ReceiptNo"], keep="first").reset_index(drop=True)
     df["PaidIn"] = pd.to_numeric(df["PaidIn"].round(2), errors="coerce").fillna(0)
     df["Withdrawn"] = pd.to_numeric(df["Withdrawn"].round(2), errors="coerce").fillna(0)
 
