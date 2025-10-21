@@ -193,7 +193,7 @@ def trends():
     df = pd.concat(df_list, ignore_index=True)
 
     # Drop duplicate transactions
-    df = df.drop_duplicates(subset=["ReceiptNo"], keep="first")
+    #df = df.drop_duplicates(subset=["ReceiptNo"], keep="first")
 
     # --- Filter by selected date range ---
     df = df[(df["CompletionTime"] >= pd.Timestamp(start_date)) &
