@@ -262,7 +262,28 @@ class PdfService:
         except ValueError:
             return 0.0
 
+UPLOAD_FOLDER = 'uploads/'
 
+def load_csv_data(folder_path: str) -> pd.DataFrame:
+    """Read and combine all CSVs from the uploads folder."""
+    csv_files = glob.glob(os.path.join(folder_path, '*.csv'))
+    if not csv_files:
+        raise FileNotFoundError("No CSV files found in the uploads folder.")
+
+    df_list = []
+    for file in csv_files:
+        try:
+            temp_df = pd.read_csv(file, parse_dates=['CompletionTime'])
+            df_list.append(temp_df)
+        except Exception as e:
+            print(f"⚠️ Skipping {file}: {e}")
+
+    if not df_list:
+        raise ValueError("No valid CSV data could be read.")
+    
+    df = pd.concat(df_list, ignore_index=True)
+    df["Withdrawn"] = df["Withdrawn"].abs()
+    return df
 
 @app.route("/", methods=["GET", "POST"])
 def index():
@@ -337,24 +358,13 @@ def index():
 def rawData():
     form=DateForm()
     
-    folderPath = 'uploads/'
-
-    csvFiles = glob.glob(os.path.join(folderPath, '*.csv'))
-
-    # Read and combine all CSVs into one DataFrame
-    dfList = []
-    for file in csvFiles:
-        tempDf = pd.read_csv(file, parse_dates=['CompletionTime'])
-        dfList.append(tempDf)
-
-    # Concatenate all data into a single DataFrame
-    df = pd.concat(dfList, ignore_index=True)
-    # Drop duplicate transactions based on unique ReceiptNo
-    #df = df.drop_duplicates(subset=["ReceiptNo"], keep="first").reset_index(drop=True)
-    df["PaidIn"] = pd.to_numeric(df["PaidIn"].round(2), errors="coerce").fillna(0)
-    df["Withdrawn"] = pd.to_numeric(df["Withdrawn"].round(2), errors="coerce").fillna(0)
-
-
+    # --- Load Data Safely --- #
+    try:
+        df = load_csv_data(UPLOAD_FOLDER)
+    except Exception as e:
+        flash(str(e), "danger")
+        return render_template('rawData.html', title='Analysis', form=form)
+    
     if request.method == 'POST':
         # Handle form submission
         startDate =form.startDate.data.strftime('%Y-%m-%d') 
