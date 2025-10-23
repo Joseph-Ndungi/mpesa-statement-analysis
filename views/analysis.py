@@ -7,29 +7,38 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import re
 import plotly.express as px
+from datetime import date, datetime
 
 analysisBp = Blueprint('analysisBp', __name__)
 
-folderPath = 'uploads/'
-
-csvFiles = glob.glob(os.path.join(folderPath, '*.csv'))
+UPLOAD_FOLDER = 'uploads/'
 
 
-# Read and combine all CSVs into one DataFrame
-dfList = []
-for file in csvFiles:
-    tempDf = pd.read_csv(file, parse_dates=['CompletionTime'])
-    dfList.append(tempDf)
+# --- Utility Functions --- #
+def load_csv_data(folder_path: str) -> pd.DataFrame:
+    """Read and combine all CSVs from the uploads folder."""
+    csv_files = glob.glob(os.path.join(folder_path, '*.csv'))
+    if not csv_files:
+        raise FileNotFoundError("No CSV files found in the uploads folder.")
 
-# Concatenate all data into a single DataFrame
-df = pd.concat(dfList, ignore_index=True)
-# Drop duplicate transactions based on unique ReceiptNo
-#df = df.drop_duplicates(subset=["ReceiptNo"], keep="first").reset_index(drop=True)
-df["Withdrawn"] = df["Withdrawn"].abs()
+    df_list = []
+    for file in csv_files:
+        try:
+            temp_df = pd.read_csv(file, parse_dates=['CompletionTime'])
+            df_list.append(temp_df)
+        except Exception as e:
+            print(f"⚠️ Skipping {file}: {e}")
+
+    if not df_list:
+        raise ValueError("No valid CSV data could be read.")
+    
+    df = pd.concat(df_list, ignore_index=True)
+    df["Withdrawn"] = df["Withdrawn"].abs()
+    return df
+
 
 def categorize_transaction(details: str) -> str:
     details = str(details).lower()
-
     if "merchant payment" in details or "buy goods" in details:
         return "Merchant Payment"
     elif "customer send money" in details or "transfer to" in details:
@@ -38,7 +47,7 @@ def categorize_transaction(details: str) -> str:
         return "Received Money"
     elif "withdraw" in details:
         return "Withdrawal"
-    elif "mali" in details or "Business Payment from 859551" in details or "Pay Bill Online to 859528" in details:
+    elif "mali" in details or "business payment from 859551" in details or "pay bill online to 859528" in details:
         return "Mali MMF"
     elif "paybill" in details or "pay bill" in details:
         return "Paybill Payment"
@@ -52,81 +61,75 @@ def categorize_transaction(details: str) -> str:
         return "Reversal"
     elif "charge" in details or "fee" in details:
         return "Charges / Fees"
+    return "Other"
 
-    else:
-        return "Other"
-
-# --- Apply categorization ---
-df["Category"] = df["Details"].apply(categorize_transaction)
 
 def extract_counterparty(details: str) -> str:
-    """
-    Extract likely counterparty name or business from M-PESA transaction details.
-    """
     text = str(details).strip()
-
-    # Examples of patterns to catch:
-    # "Pay Bill Online to 222111 - Family Bank"
-    # "Customer Send Money to 07******478 SOFIA MASIKA"
-    # "Business Payment from 859551 - MALI"
     match = re.search(r"(?:to|from)\s+(?:[-\w\s*]+)", text, re.I)
     if match:
         name = match.group(0)
-        # Clean up
         name = re.sub(r"^(to|from)\s+", "", name, flags=re.I)
         name = re.sub(r"[-:]+", "", name).strip()
         return name
-
-    # fallback: maybe the name follows a hyphen (e.g., "- MALI")
     match = re.search(r"-\s*([A-Za-z\s]+)", text)
     if match:
         return match.group(1).strip()
-
     return "Unknown"
-
-df["Counterparty"] = df["Details"].apply(extract_counterparty)
 
 
 @analysisBp.route('/analysis', methods=['GET', 'POST'])
 def analysis():
     form = FilterForm()
 
-    # --- Make a copy to avoid mutating global df ---
-    filtered_df = df.copy()
+    # --- Default configuration --- #
+    default_start = date(2025, 7, 15)
+    default_end = date(2025, 7, 27)
+    default_period = "M"  # Monthly by default
 
-    # --- Apply date filters if provided ---
-    if request.method == 'POST' and form.validate_on_submit():
-        start_date = form.startDate.data
-        end_date = form.endDate.data
-        selected_period = form.period.data or "M"  # M = Monthly, W = Weekly
+    # --- Load Data Safely --- #
+    try:
+        df = load_csv_data(UPLOAD_FOLDER)
+    except Exception as e:
+        flash(str(e), "danger")
+        return render_template('analysis.html', title='Analysis', form=form)
+
+    # --- Categorize and Extract Counterparties --- #
+    df["Category"] = df["Details"].apply(categorize_transaction)
+    df["Counterparty"] = df["Details"].apply(extract_counterparty)
+
+    # --- Handle Filters (with defaults) --- #
+    if request.method == "POST" and form.validate_on_submit():
+        start_date = form.startDate.data or default_start
+        end_date = form.endDate.data or default_end
+        selected_period = form.period.data or default_period
     else:
-        selected_period = "M"  # Default to Monthly
+        start_date = default_start
+        end_date = default_end
+        selected_period = default_period
+        form.startDate.data = default_start
+        form.endDate.data = default_end
+        form.period.data = default_period
 
-    # Filter data by date range if applicable
-    if request.method == 'POST' and form.validate_on_submit():
-        if start_date and end_date:
-            mask = (filtered_df["CompletionTime"].dt.date >= start_date) & (
-                filtered_df["CompletionTime"].dt.date <= end_date
-            )
-            filtered_df = filtered_df.loc[mask]
-        elif start_date:
-            filtered_df = filtered_df.loc[filtered_df["CompletionTime"].dt.date >= start_date]
-        elif end_date:
-            filtered_df = filtered_df.loc[filtered_df["CompletionTime"].dt.date <= end_date]
+    # --- Apply Date Filtering --- #
+    filtered_df = df[
+        (df["CompletionTime"].dt.date >= start_date)
+        & (df["CompletionTime"].dt.date <= end_date)
+    ]
 
     if filtered_df.empty:
-        flash("No transactions found for the selected filters.", "warning")
+        flash("⚠️ No transactions found in the selected date range.", "warning")
         return render_template(
-            'analysis.html',
-            title='Analysis',
+            "analysis.html",
+            title="Analysis",
             form=form,
             cashflow=None,
             cashflow_graph=None,
-            category_monthly_graph=None,
-            merchant_monthly_graph=None
+            category_graph=None,
+            merchant_graph=None
         )
 
-    # --- Cashflow Analysis ---
+    # --- Cashflow Analysis --- #
     period_label = "Month" if selected_period == "M" else "Week"
     filtered_df[period_label] = filtered_df["CompletionTime"].dt.to_period(selected_period)
 
@@ -137,13 +140,8 @@ def analysis():
 
     cashflow["NetFlow"] = cashflow["Inflow"] - cashflow["Outflow"]
     cashflow[period_label] = cashflow[period_label].astype(str)
-    
-    #print(cashflow.head())
-    
-    # Rename the grouping column to a common name "Period"
-    #cashflow = cashflow.rename(columns={period_label: "Period"})
 
-    # Melt DataFrame for line plot
+    # --- Plot Cashflow --- #
     cashflow_melted = cashflow.melt(
         id_vars=period_label,
         value_vars=["Inflow", "Outflow", "NetFlow"],
@@ -151,7 +149,6 @@ def analysis():
         value_name="Amount"
     )
 
-    # --- Plotly Cashflow Chart ---
     cashflow_fig = px.line(
         cashflow_melted,
         x=period_label,
@@ -160,11 +157,7 @@ def analysis():
         markers=True,
         title=f"📆 {period_label}ly M-PESA Cash Flow",
         line_dash="FlowType",
-        color_discrete_map={
-            "Inflow": "green",
-            "Outflow": "red",
-            "NetFlow": "blue"
-        }
+        color_discrete_map={"Inflow": "green", "Outflow": "red", "NetFlow": "blue"},
     )
     cashflow_fig.update_layout(
         xaxis_title=period_label,
@@ -174,23 +167,16 @@ def analysis():
         title_x=0.5,
         margin=dict(l=40, r=40, t=60, b=40)
     )
-    cashflow_fig.update_xaxes(tickangle=45)
     cashflow_graph = json.dumps(cashflow_fig, cls=plotly.utils.PlotlyJSONEncoder)
 
-    # --- Category Trends ---
-    def category_trends_over_time(df: pd.DataFrame, period: str = "M"):
+    # --- Category Trends --- #
+    def category_trends_over_time(df, period="M"):
         df["Period"] = df["CompletionTime"].dt.to_period(period).astype(str)
-
         category_trends = (
             df.groupby(["Period", "Category"])
-            .agg(
-                Total_Spent=("Withdrawn", "sum"),
-                Total_Received=("PaidIn", "sum")
-            )
+            .agg(Total_Spent=("Withdrawn", "sum"))
             .reset_index()
         )
-
-        category_trends["NetFlow"] = category_trends["Total_Received"] - category_trends["Total_Spent"]
 
         top_categories = (
             df.groupby("Category")["Withdrawn"]
@@ -213,18 +199,14 @@ def analysis():
             labels={"Total_Spent": "Total Spent (KES)", "Period": label}
         )
         fig.update_layout(template="plotly_white", legend_title_text="Category", xaxis_tickangle=-45)
+        return json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
 
-        return category_trends, json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
-
-    # --- Merchant Trends ---
-    def merchant_trends_over_time(df: pd.DataFrame, period: str = "M"):
+    # --- Merchant Trends --- #
+    def merchant_trends_over_time(df, period="M"):
         df["Period"] = df["CompletionTime"].dt.to_period(period).astype(str)
         merchant_trends = (
             df.groupby(["Period", "Counterparty"])
-            .agg(
-                Total_Spent=("Withdrawn", "sum"),
-                Total_Received=("PaidIn", "sum")
-            )
+            .agg(Total_Spent=("Withdrawn", "sum"))
             .reset_index()
         )
 
@@ -249,20 +231,19 @@ def analysis():
             labels={"Total_Spent": "Total Spent (KES)", "Period": label}
         )
         fig.update_layout(template="plotly_white", legend_title_text="Merchant", xaxis_tickangle=-45)
+        return json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
 
-        return merchant_trends, json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
+    # --- Generate Graphs --- #
+    category_graph = category_trends_over_time(filtered_df, period=selected_period)
+    merchant_graph = merchant_trends_over_time(filtered_df, period=selected_period)
 
-    # --- Generate Graphs Based on Selected Period ---
-    category_data, category_graph = category_trends_over_time(filtered_df, period=selected_period)
-    merchant_data, merchant_graph = merchant_trends_over_time(filtered_df, period=selected_period)
-
-    # --- Render Template ---
+    # --- Render Template --- #
     return render_template(
-        'analysis.html',
-        title='Analysis',
+        "analysis.html",
+        title="Analysis",
         form=form,
         selected_period=selected_period,
-        cashflow=cashflow.to_dict('records'),
+        cashflow=cashflow.to_dict("records"),
         cashflow_graph=cashflow_graph,
         category_graph=category_graph,
         merchant_graph=merchant_graph

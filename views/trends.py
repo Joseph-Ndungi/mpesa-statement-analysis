@@ -147,8 +147,8 @@ def trends():
     form = FilterForm()
 
     # --- Default configuration ---
-    default_start = date(2025, 7, 1)   # July this year
-    default_end = date.today()
+    default_start = date(2025, 7, 15)   # July this year
+    default_end = date(2025, 7, 27) 
     period = "W"  # Default to weekly
 
     balance_plot = spending_plot = None
@@ -193,7 +193,7 @@ def trends():
     df = pd.concat(df_list, ignore_index=True)
 
     # Drop duplicate transactions
-    df = df.drop_duplicates(subset=["ReceiptNo"], keep="first")
+    #df = df.drop_duplicates(subset=["ReceiptNo"], keep="first")
 
     # --- Filter by selected date range ---
     df = df[(df["CompletionTime"] >= pd.Timestamp(start_date)) &

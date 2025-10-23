@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import re
 import plotly.express as px
+from datetime import date, datetime
 
 insightsBp = Blueprint('insightsBp', __name__)
 
@@ -15,44 +16,68 @@ folderPath = 'uploads/'
 csvFiles = glob.glob(os.path.join(folderPath, '*.csv'))
 
 
-# Read and combine all CSVs into one DataFrame
-dfList = []
-for file in csvFiles:
-    tempDf = pd.read_csv(file, parse_dates=['CompletionTime'])
-    dfList.append(tempDf)
-
-# Concatenate all data into a single DataFrame
-df = pd.concat(dfList, ignore_index=True)
-# Drop duplicate transactions based on unique ReceiptNo
-#df = df.drop_duplicates(subset=["ReceiptNo"], keep="first").reset_index(drop=True)
-df["Withdrawn"] = df["Withdrawn"].abs()
-
-
 @insightsBp.route('/insights', methods=['GET', 'POST'])
 def insights():
     form = DateForm()
 
-    # --- Copy original data ---
-    filtered_df = df.copy()
+    # --- Default configuration ---
+    default_start = date(2025, 7, 15)
+    default_end = date(2025, 7, 27)
 
-    # --- Apply date filters if provided ---
+    # --- Load uploaded CSVs safely ---
+    uploads_dir = os.path.join(os.getcwd(), "uploads")
+    try:
+        csv_files = [
+            os.path.join(uploads_dir, f)
+            for f in os.listdir(uploads_dir)
+            if f.endswith(".csv")
+        ]
+    except FileNotFoundError:
+        flash("⚠️ Uploads directory not found.", "danger")
+        return render_template('insights.html', title='Insights', form=form)
+
+    if not csv_files:
+        flash("⚠️ No transaction CSVs found in uploads directory.", "warning")
+        return render_template('insights.html', title='Insights', form=form)
+
+    # --- Read and combine CSVs with error handling ---
+    df_list = []
+    for file in csv_files:
+        try:
+            temp_df = pd.read_csv(file, parse_dates=['CompletionTime'])
+            df_list.append(temp_df)
+        except Exception as e:
+            flash(f"⚠️ Error reading {os.path.basename(file)}: {e}", "danger")
+            continue
+
+    if not df_list:
+        flash("⚠️ No valid CSV files could be read.", "danger")
+        return render_template('insights.html', title='Insights', form=form)
+
+    # --- Combine and clean data ---
+    df = pd.concat(df_list, ignore_index=True)
+    df["Withdrawn"] = pd.to_numeric(df["Withdrawn"], errors="coerce").abs()
+    df["PaidIn"] = pd.to_numeric(df["PaidIn"], errors="coerce").fillna(0)
+
+    # --- Determine date range ---
     if request.method == 'POST' and form.validate_on_submit():
-        start_date = form.startDate.data
-        end_date = form.endDate.data
+        start_date = form.startDate.data or default_start
+        end_date = form.endDate.data or default_end
+    else:
+        start_date = default_start
+        end_date = default_end
+        form.startDate.data = default_start
+        form.endDate.data = default_end
 
-        if start_date and end_date:
-            mask = (filtered_df["CompletionTime"].dt.date >= start_date) & (
-                filtered_df["CompletionTime"].dt.date <= end_date
-            )
-            filtered_df = filtered_df.loc[mask]
-        elif start_date:
-            filtered_df = filtered_df.loc[filtered_df["CompletionTime"].dt.date >= start_date]
-        elif end_date:
-            filtered_df = filtered_df.loc[filtered_df["CompletionTime"].dt.date <= end_date]
+    # --- Filter by selected range ---
+    filtered_df = df[
+        (df["CompletionTime"].dt.date >= start_date)
+        & (df["CompletionTime"].dt.date <= end_date)
+    ]
 
-    # --- Handle case where no data remains ---
+    # --- Handle empty dataset ---
     if filtered_df.empty:
-        flash("No transactions found for the selected date range.", "warning")
+        flash("⚠️ No transactions found for the selected date range.", "warning")
         return render_template(
             'insights.html',
             title='Insights',
@@ -103,7 +128,7 @@ def insights():
     )
     category_summary["NetAmount"] = category_summary["PaidIn"] - category_summary["Withdrawn"]
 
-    categoryFig = px.bar(
+    category_fig = px.bar(
         category_summary,
         x="Category",
         y=["PaidIn", "Withdrawn"],
@@ -112,7 +137,7 @@ def insights():
         labels={"Category": "Transaction Category", "value": "Amount (KES)"},
         height=500,
     )
-    categoryGraph = json.dumps(categoryFig, cls=plotly.utils.PlotlyJSONEncoder)
+    category_graph = json.dumps(category_fig, cls=plotly.utils.PlotlyJSONEncoder)
 
     # --- Extract Counterparty ---
     def extract_counterparty(details: str) -> str:
@@ -146,7 +171,7 @@ def insights():
         .reset_index()
     )
 
-    topCounterpartiesFig = px.bar(
+    top_counterparties_fig = px.bar(
         top_counterparties_value,
         x="NetAmount",
         y="Counterparty",
@@ -154,7 +179,7 @@ def insights():
         color='NetAmount',
         title="Top 10 Counterparties by Transaction Value",
     )
-    topCounterpartiesGraph = json.dumps(topCounterpartiesFig, cls=plotly.utils.PlotlyJSONEncoder)
+    top_counterparties_graph = json.dumps(top_counterparties_fig, cls=plotly.utils.PlotlyJSONEncoder)
 
     # --- Render Template ---
     return render_template(
@@ -164,6 +189,6 @@ def insights():
         category_summary=category_summary.to_dict(orient='records'),
         top_counterparties_count=top_counterparties_count.to_dict(orient='records'),
         top_counterparties_value=top_counterparties_value.to_dict(orient='records'),
-        category_graph=categoryGraph,
-        top_counterparties_graph=topCounterpartiesGraph,
+        category_graph=category_graph,
+        top_counterparties_graph=top_counterparties_graph,
     )
